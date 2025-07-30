@@ -1,3 +1,5 @@
+import argparse
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -90,30 +92,10 @@ class Header:
     strings_nsi: int
     string_table_nb: int
 
-def parse_caps_file():
-    with open('caps', 'r') as f: content = f.readlines()
-
-    keep = []
-    for line in content:
-        if "%%-STOP-HERE-%%" in line:
-            break
-        if not line.startswith('#'):
-            keep.append([o for o in line.split('\t') if o != ''])
-    
-    keep_bool = [
-        elt[1] for elt in keep if any(o == 'bool' for o in elt)
-    ]
-
-    keep_num = [
-        elt[1] for elt in keep if any(o == 'num' for o in elt)
-    ]
-
-
-    keep_string = [
-        elt[1] for elt in keep if any(o == 'str' for o in elt)
-    ]
-    return {'bool': keep_bool, 'num': keep_num, 'string': keep_string}
-
+def load_caps() -> dict[str, list[str]]:
+    with open('caps.json', 'r') as f:
+        caps = json.load(f)
+    return caps
 
 def load_terminfo_raw()->bytes:
     path = Path("/Applications/Ghostty.app/Contents/Resources/terminfo/78/xterm-ghostty")
@@ -136,16 +118,16 @@ def section_names(tinf: bytes, header: Header)->list[str]:
     names = tinf[12:12+header.names_nb-1].decode('ascii')
     return names.split('|')
 
-def section_bool(tinf: bytes, header: Header)->list[str]:
+def section_bool(tinf: bytes, header: Header, bool_caps:list[str])->list[str]:
     start = 12+header.names_nb
     return sorted(
         [
-            cap for flag, cap in zip(tinf[start:start+header.boolean_nb+1], BOOL_CAPS)
+            cap for flag, cap in zip(tinf[start:start+header.boolean_nb+1], bool_caps)
             if flag == 1
         ]
     )
 
-def section_numbers(tinf: bytes, header: Header):
+def section_numbers(tinf: bytes, header: Header, num_caps:list[str]):
     # possibly skips a byte so that number section starts on even byte
     start = 12 + header.names_nb + header.boolean_nb
     if start % 2 == 1:
@@ -158,11 +140,11 @@ def section_numbers(tinf: bytes, header: Header):
         if oct(blo) == '0o377' and oct(bhi) == '0o377':
             # capabilities is missing
             continue
-        nums.append((NUM_CAPS[i], blo + 256*bhi))
+        nums.append((num_caps[i], blo + 256*bhi))
 
     return sorted(nums, key=lambda x: x[0])
     
-def section_strings(tinf: bytes, header: Header, strings_cap: list[str]):
+def section_strings(tinf: bytes, header: Header, strings_cap: list[str], raw: bool=False):
     start = (
         12 +
         header.names_nb +
@@ -181,73 +163,77 @@ def section_strings(tinf: bytes, header: Header, strings_cap: list[str]):
     # index into the string table
     res = []
     for i in range(header.strings_nsi):
-        print(i)
         blo, bhi = tinf[start+2*i], tinf[start+2*i+1]
         if oct(blo) == '0o377' and oct(bhi) == '0o377':
             # capabilities is missing
             continue
         offset = blo + 256*bhi
-        print(f'offset = {offset}')
         ii = 0
         try:
             while strings_table[offset+ii] != 0:
-                print(ii)
                 ii += 1
         except:
             breakpoint()
         
         val = strings_table[offset:offset+ii]
+
+        if not raw:
+            if len(val) == 1 and ord(val) <= 31:
+                # this is an escape sequence, convert to printable representation
+                val = '^{val}'.format(val=chr(ord(val)+0x40))
+            else:
+                # if any element of the list of codepoints is '\x1b',
+                # convert to the \E representation
+                def _render_non_printable(c):
+                    # if printable: just render the regular ascii representation
+                    # else: prints the octal preceded by '\'. e.g. 0o177 -> \177
+                    if c <= 31 or c >= 127:
+                        oct_repr = oct(c).replace('0o','').zfill(3)
+                        return f'\\{oct_repr}'
+                    else:
+                        return chr(c)
+                val = ''.join(
+                    [r'\E' if val_i == 27 else _render_non_printable(val_i) for val_i in val]
+                )
         res.append((strings_cap[i], val))
-    return res
-        # nums.append((NUM_CAPS[i], ))
-    
-    
+    return sorted(res, key=lambda x: x[0])
 
+def format_entry(names, bools, nums, strs, line_length=70):
+    lines = []
+    lines.append('|'.join(names))
+    lines.append(','.join(bools))
+    lines.append(','.join(['#'.join([a, str(b)]) for a,b in nums]))
 
-if __name__ == '__main__':
-
-    tinf = load_terminfo_raw()
-
-    header = get_header(tinf) # reads first 12 bytes (0-11)
-    names = section_names(tinf, header)
-    
-    bools = section_bool(tinf, header)
-
-
-    start_alt = (
-        12 +
-        header.names_nb +
-        header.boolean_nb +
-        2 * header.numbers_nsi +
-        2 * header.strings_nsi
-    )
-    strtbl = tinf[start_alt:start_alt+20]
-    caps = parse_caps_file()    
-    a = section_strings(tinf, header, caps['string'])
-
-    start_alt = (
-        12 +
-        header.names_nb +
-        header.boolean_nb +
-        2 * header.numbers_nsi +
-        1 +
-        2 * header.strings_nsi
-    )
-
-    strings_table = tinf[start_alt:]
-
-    # index into the string table
-    start = 12 + header.names_nb + header.boolean_nb + 2 * header.numbers_nsi + 1
-
-    lo, hi = tinf[start], tinf[start+1]
-
-    b = []
-    for (cap, cp) in a:
-        if len(cp) == 1 and ord(cp) <=31:
-            b.append((cap, '^{cp}'.format(cp=chr(ord(cp)+0x40))))
+    line = ''
+    for cap, val in strs:
+        if line == '':
+            line += f'{cap}={val},'
         else:
-            # if any element of the list of codepoints is '\x1b',
-            # convert to the \E representation
-            cpstr = ''.join(['\E' if cp_i == 27 else chr(cp_i) for cp_i in cp])
-            b.append((cap, cpstr))
+            proto_line = line + f' {cap}={val},'
+            if len(proto_line) <= line_length:
+                line = proto_line
+            else:
+                lines.append(line)
+                line = f'{cap}={val},'
+
+    lines.append(line)
+    return lines
+
+def main():
+    tinf = load_terminfo_raw()
+    header = get_header(tinf) # reads first 12 bytes (0-11)
+
+    caps = load_caps()
+    names = section_names(tinf, header)
+    bools = section_bool(tinf, header, caps['bool'])
+    nums = section_numbers(tinf, header, caps['num'])
+    strs = section_strings(tinf, header, caps['string'])
+
+    r = format_entry(names, bools, nums, strs, line_length=58)
+
+    print('\n\t'.join(r))
+    
+if __name__ == '__main__':
+    main()
+
 
