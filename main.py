@@ -1,86 +1,8 @@
 import argparse
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
-
-# See: https://github.com/mirror/ncurses/blob/87c2c84cbd2332d6d94b12a1dcaf12ad1a51a938/include/Caps
-# for order of boolean capabilities
-
-BOOL_CAPS = [
-    'bw',
-    'am',
-    'xsb',
-    'xhp',
-    'xenl',
-    'eo',
-    'gn',
-    'hc',
-    'km',
-    'hs',
-    'in',
-    'da',
-    'db',
-    'mir',
-    'msgr',
-    'os',
-    'eslok',
-    'xt',
-    'hz',
-    'ul',
-    'xon',
-    'nxon',
-    'mc5i',
-    'chts',
-    'nrrmc',
-    'npc',
-    'ndscr',
-    'ccc',
-    'bce',
-    'hls',
-    'xhpa',
-    'crxm',
-    'daisy',
-    'xvpa',
-    'sam',
-    'cpix',
-    'lpix',
-]
-
-NUM_CAPS = [
-    'cols',
-    'it',
-    'lines',
-    'lm',
-    'xmc',
-    'pb',
-    'vt',
-    'wsl',
-    'nlab',
-    'lh',
-    'lw',
-    'ma',
-    'wnum',
-    'colors',
-    'pairs',
-    'ncv',
-    'bufsz',
-    'spinv',
-    'spinh',
-    'maddr',
-    'mjump',
-    'mcs',
-    'mls',
-    'npins',
-    'orc',
-    'orl',
-    'orhi',
-    'orvi',
-    'cps',
-    'widcs',
-    'btns',
-    'bitwin',
-    'bitype'
-]
 
 
 @dataclass
@@ -97,8 +19,23 @@ def load_caps() -> dict[str, list[str]]:
         caps = json.load(f)
     return caps
 
-def load_terminfo_raw()->bytes:
-    path = Path("/Applications/Ghostty.app/Contents/Resources/terminfo/78/xterm-ghostty")
+def get_terminfo_path(args=None) -> Path:
+    if args is not None and args.path is not None:
+        terminfo_path = args.path
+        assert terminfo_path.exists()
+    else:
+        TERMINFO = os.getenv('TERMINFO')
+        assert TERMINFO is not None
+
+        terminfo_dir = Path(TERMINFO)
+        assert terminfo_dir.exists()
+
+        terminfo_path = next(sorted(terminfo_dir.glob('*'), reverse=True)[0].glob('*'))
+
+    return terminfo_path
+
+def load_terminfo_raw(args=None)->bytes:
+    path = get_terminfo_path(args)
     with open(path, 'rb') as f:
         tinf = f.read()
     return tinf
@@ -219,8 +156,8 @@ def format_entry(names, bools, nums, strs, line_length=70):
     lines.append(line)
     return lines
 
-def main():
-    tinf = load_terminfo_raw()
+def main(args):
+    tinf = load_terminfo_raw(args)
     header = get_header(tinf) # reads first 12 bytes (0-11)
 
     caps = load_caps()
@@ -234,6 +171,8 @@ def main():
     print('\n\t'.join(r))
     
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--path', type=Path, required=False, default=None)
+    args = parser.parse_args()
 
-
+    main(args)
