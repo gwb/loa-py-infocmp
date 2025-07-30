@@ -24,6 +24,17 @@ python3 main.py --path /path/to/terminfo
 allows to point to an explicit terminfo file to parse.
 
 
+## Further notes
+
+The `caps.py` in the repo is used to generate the `cap.json` file, a list of the capabilities, 
+as listed in ncurses `caps` file. You don't need to run it. If you do want to run it, then you 
+need to copy ncurses's [caps file](https://github.com/mirror/ncurses/blob/87c2c84cbd2332d6d94b12a1dcaf12ad1a51a938/include/Caps) into the directory and then
+
+```
+python3 caps.py
+```
+
+
 ## Limitations
 
 This is a very brittle implementation. It works for some terminfo files but not 
