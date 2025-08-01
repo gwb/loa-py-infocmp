@@ -35,11 +35,18 @@ python3 caps.py
 ```
 
 
+The `caps` file has some instruction on when to stop parsing the file.. but I've found that 
+if I indeed stop parsing there, then I would get results that differ from `infocmp`.. An 
+example is with the `iterm2` terminfo file (located here on my system: `/Applications/iTerm.app/Contents/Resources/terminfo/78/xterm-256color`).
+
+
 ## Limitations
 
-This is a very brittle implementation. It works for some terminfo files but not 
-others. For instance, it works fine for ghostty's terminfo file and the `vt100` terminfo file 
-(found `/usr/share/terminfo/76/vt100` on my mac), but not for the `iterm2` terminfo files. This 
-might have to do with extended capabilities, etc..
+- This has not been thoroughly tested. I've spot checked the results for a few terminals,
+  including ghostty and the results look reasonable. I have checked iterm2 and vt100 very 
+  cursorily and it seems to be reasonable as well. 
+  
+- It would be helpful to right a script to compare the output of ncurses `infocmp` versus 
+  my own implementation on the content of `/usr/share/terminfo/*`.
 
 

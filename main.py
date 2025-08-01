@@ -81,7 +81,9 @@ def section_numbers(tinf: bytes, header: Header, num_caps:list[str]):
 
     return sorted(nums, key=lambda x: x[0])
     
-def section_strings(tinf: bytes, header: Header, strings_cap: list[str], raw: bool=False):
+def section_strings(
+        tinf: bytes, header: Header, strings_cap: list[str], raw: bool=False, debug: bool=False
+):
     start = (
         12 +
         header.names_nb +
@@ -103,6 +105,8 @@ def section_strings(tinf: bytes, header: Header, strings_cap: list[str], raw: bo
         blo, bhi = tinf[start+2*i], tinf[start+2*i+1]
         if oct(blo) == '0o377' and oct(bhi) == '0o377':
             # capabilities is missing
+            if debug:
+                print(f'{i} ???')
             continue
         offset = blo + 256*bhi
         ii = 0
@@ -132,7 +136,16 @@ def section_strings(tinf: bytes, header: Header, strings_cap: list[str], raw: bo
                 val = ''.join(
                     [r'\E' if val_i == 27 else _render_non_printable(val_i) for val_i in val]
                 )
-        res.append((strings_cap[i], val))
+        if debug:
+            try:
+                res.append((strings_cap[i], val))
+                print(f'{i} [{strings_cap[i]}] {val}')
+            except IndexError:
+                print(f'{i}: {val}')
+                continue
+        else:
+            res.append((strings_cap[i], val))
+
     return sorted(res, key=lambda x: x[0])
 
 def format_entry(names, bools, nums, strs, line_length=70):
@@ -176,3 +189,4 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     main(args)
+

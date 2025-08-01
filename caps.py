@@ -9,8 +9,8 @@ def parse_caps_file():
 
     keep = []
     for line in content:
-        if "%%-STOP-HERE-%%" in line:
-            break
+        # if "%%-STOP-HERE-%%" in line:
+        #     break
         if not line.startswith('#'):
             keep.append([o for o in line.split('\t') if o != ''])
     
